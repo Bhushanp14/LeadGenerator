@@ -1,5 +1,5 @@
 import csv
-import googlemaps
+import googlemaps # type: ignore
 from io import StringIO
 from django.http import HttpResponse
 from django.conf import settings
@@ -7,6 +7,7 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from datetime import datetime
 import time
+from .services.reddit_service import fetch_reddit_leads
 @api_view(['POST'])
 def generate_leads(request):
     business_type = request.data.get('business_type')
@@ -80,3 +81,32 @@ def export_leads_csv(request):
 
     except Exception as e:
         return HttpResponse(f"Error generating CSV: {str(e)}", status=500)
+
+@api_view(['POST'])
+def generate_reddit_leads(request):
+    """
+    Endpoint to fetch Reddit leads based on service category, subreddits, and keywords.
+    """
+    service_category = request.data.get('role') # Matching the 'role' field from frontend
+    subreddits = request.data.get('subreddits', [])
+    keyword = request.data.get('keyword')
+    limit = int(request.data.get('limit', 50))
+
+    if not service_category or not subreddits:
+        return Response({'error': 'Please provide Service Category and at least one Subreddit.'}, status=400)
+
+    try:
+        results = fetch_reddit_leads(
+            service_category=service_category,
+            subreddits=subreddits,
+            keyword=keyword,
+            limit=limit
+        )
+        
+        if isinstance(results, dict) and "error" in results:
+            return Response(results, status=400)
+            
+        return Response({'leads': results})
+
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
