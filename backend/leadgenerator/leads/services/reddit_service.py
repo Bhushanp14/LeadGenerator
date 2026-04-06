@@ -1,66 +1,66 @@
-import praw
-from django.conf import settings
+import requests
 from datetime import datetime
 
-def fetch_reddit_leads(service_category, subreddits, keyword=None, limit=50):
-    """
-    Fetches leads from Reddit using PRAW.
-    """
-    if not all([settings.REDDIT_CLIENT_ID, settings.REDDIT_CLIENT_SECRET]):
-        return {"error": "Reddit API credentials not configured in .env"}
+class RedditLeadService:
+    def __init__(self):
+        self.headers = {
+            "User-Agent": "LeadGenerator/1.0"
+        }
 
-    reddit = praw.Reddit(
-        client_id=settings.REDDIT_CLIENT_ID,
-        client_secret=settings.REDDIT_CLIENT_SECRET,
-        user_agent=settings.REDDIT_USER_AGENT
-    )
+    def search_posts(self, role, subreddits, keyword, limit):
+        if not subreddits:
+            return []
 
-    leads = []
-    
-    # If no keyword is provided, use the service category as the primary search term
-    search_query = keyword if keyword else service_category
-    
-    # Common "buying intent" keywords to combine with search
-    intent_keywords = ["looking for", "hire", "need", "recommend", "suggest", "anybody", "someone"]
-    
-    for sub_name in subreddits:
+        subreddit_combo = "+".join(subreddits)
+        query = keyword.strip() if keyword and keyword.strip() else role
+
+        url = f"https://www.reddit.com/r/{subreddit_combo}/search.json"
+        
+        params = {
+            "q": query,
+            "limit": limit,
+            "sort": "new",
+            "restrict_sr": 1
+        }
+        
         try:
-            subreddit = reddit.subreddit(sub_name)
-            
-            # Simple keyword search within the subreddit
-            # Reddit search handles boolean OR well, e.g., "web developer (looking for OR hire)"
-            full_query = f'"{search_query}"'
-            
-            # Search recent posts
-            for submission in subreddit.search(full_query, sort='new', limit=limit):
-                # Basic filtering to ensure it's not too old (optional, but good for relevance)
-                # For now, we take everything recent within the limit
-                
-                created_dt = datetime.fromtimestamp(submission.created_utc)
-                time_diff = datetime.now() - created_dt
-                
-                # Format time ago string
-                if time_diff.days > 0:
-                    time_ago = f"{time_diff.days}d ago"
-                elif time_diff.seconds // 3600 > 0:
-                    time_ago = f"{time_diff.seconds // 3600}h ago"
-                else:
-                    time_ago = f"{time_diff.seconds // 60}m ago"
+            response = requests.get(url, headers=self.headers, params=params)
+            response.raise_for_status()
+            data = response.json()
+        except requests.RequestException as e:
+            return {"error": f"Failed to fetch from Reddit: {str(e)}"}
+        except ValueError:
+            return {"error": "Invalid response from Reddit"}
 
-                leads.append({
-                    "id": submission.id,
-                    "title": submission.title,
-                    "subreddit": submission.subreddit.display_name,
-                    "author": submission.author.name if submission.author else "[deleted]",
-                    "created_utc": time_ago,
-                    "ups": submission.score,
-                    "url": f"https://www.reddit.com{submission.permalink}"
-                })
-                
-                if len(leads) >= limit:
-                    break
-        except Exception as e:
-            print(f"Error fetching from r/{sub_name}: {e}")
-            continue
+        # Check for empty result or error from reddit JSON
+        if not isinstance(data, dict) or "data" not in data or "children" not in data["data"]:
+            return []
 
-    return sorted(leads, key=lambda x: x['ups'], reverse=True)
+        leads = []
+        posts = data["data"]["children"]
+        for post in posts:
+            post_data = post.get("data", {})
+            
+            # Convert created_utc to readable date
+            created_ts = post_data.get("created_utc", 0)
+            created_date = ""
+            if created_ts:
+                try:
+                    created_date = datetime.fromtimestamp(created_ts).strftime('%Y-%m-%d')
+                except Exception:
+                    pass
+            
+            permalink = post_data.get("permalink", "")
+            url_link = f"https://reddit.com{permalink}" if permalink else ""
+            
+            leads.append({
+                "id": post_data.get("id", ""),
+                "title": post_data.get("title", ""),
+                "subreddit": post_data.get("subreddit", ""),
+                "author": post_data.get("author", ""),
+                "created_utc": created_date,
+                "ups": post_data.get("ups", 0),
+                "url": url_link
+            })
+            
+        return leads

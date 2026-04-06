@@ -17,6 +17,7 @@ import os
 load_dotenv()
 
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 REDDIT_CLIENT_ID = os.getenv("REDDIT_CLIENT_ID")
 REDDIT_CLIENT_SECRET = os.getenv("REDDIT_CLIENT_SECRET")
 REDDIT_USER_AGENT = os.getenv("REDDIT_USER_AGENT", "LeadGenerator/1.0")
@@ -33,7 +34,7 @@ SECRET_KEY = 'django-insecure-rbyly@0483nxh3tg2j@7%z66&p+vdx8%xl#p-g75q6u@wr^$@i
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['*']
 
 
 # Application definition
@@ -136,8 +137,8 @@ STATIC_URL = 'static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 
-#CORS_ALLOW_ALL_ORIGINS = True  # allow React frontend (for now)
+CORS_ALLOW_ALL_ORIGINS = True  # allow React frontend (for now)
 
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:8080",  # your React dev server
-]
+# CORS_ALLOWED_ORIGINS = [
+#     "http://localhost:8080",  # your React dev server
+# ]

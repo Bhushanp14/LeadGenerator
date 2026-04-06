@@ -1,0 +1,143 @@
+================================================================================
+            DETAILED WORKFLOW: SMART REDDIT LEAD DISCOVERY PIPELINE
+================================================================================
+
+The Smart Reddit Scraper is a multi-stage pipeline designed to find high-intent
+business leads (potential clients) while filtering out noise (developers sharing 
+projects, job postings, and general discussions).
+
+--------------------------------------------------------------------------------
+STAGE 1: Setup & Target Selection
+--------------------------------------------------------------------------------
+1. The scraper reads the `MonitoredSubreddit` table from the database.
+2. It groups these by "Service Category" (e.g., Web Development, SEO, Shopify).
+3. It identifies which subreddits to scrape for each category.
+
+--------------------------------------------------------------------------------
+STAGE 2: Scraping & Rate Limiting
+--------------------------------------------------------------------------------
+1. The script fetches the 50 most recent posts from each subreddit via the 
+   Reddit API (PRAW).
+2. It implements a 4.0-second delay between subreddits to remain under the 
+   Reddit rate limit (60 requests per minute) and avoid 429 "Too Many Requests" 
+   errors.
+
+--------------------------------------------------------------------------------
+STAGE 3: Pre-Filter & Deduplication
+--------------------------------------------------------------------------------
+1. Local ID Check: Skips any post that has already been stored in the database.
+2. GLOBAL DISQUALIFIERS: Rejects posts containing any phrase that signals a 
+   developer or agency offering work (not hiring):
+   - Keywords: "i am a developer", "i offer", "i provide", "my service", 
+     "dm me for freelance", "portfolio showcase", "job posting", "we are hiring".
+3. CATEGORY DISQUALIFIERS: Rejects posts using industry-specific "noise" terms:
+   - Web Dev: "tutorial", "course", "interview", "teacher"
+   - SEO/Shopify: "wholesale", "supplier", "tutorial"
+
+--------------------------------------------------------------------------------
+STAGE 4: Local AI Intent Classification (The "Brain")
+--------------------------------------------------------------------------------
+Remaining candidate posts are sent to our local Scikit-Learn model. This replaces 
+Gemini/FastText to ensure zero API cost and instant local execution.
+
+Training Dataset Examples:
+- LEAD (Prediction: True)
+  - "I need a website for my business"
+  - "Looking for a SaaS developer to build a project"
+  - "Can someone help me with SEO for my shop?"
+  - "Looking to hire a freelancer for lead generation"
+  
+- NOT A LEAD (Prediction: False)
+  - "How do I fix this bug in Python?"
+  - "Just sharing a meme about coding"
+  - "Course on Shopify development"
+  - "Interview with a successful entrepreneur"
+  - "Check out my new portfolio"
+
+The model uses TF-IDF vectorization to recognize the "intent" of the language.
+
+--------------------------------------------------------------------------------
+STAGE 5: Storage & Cleanup
+--------------------------------------------------------------------------------
+1. Verified leads are stored in the `SmartRedditLead` table.
+2. The database records the post title, subreddit, author, URL, and category.
+3. Automatic Expiry: Deletes leads older than 45 days to keep the database small
+   and the frontend page fast.
+
+================================================================================
+            EXAMPLE WORKFLOW: PROCESSING TWO REAL-WORLD POSTS
+================================================================================
+
+POST EXAMPLE 1: [REJECTED - NOT A LEAD]
+--------------------------------------
+Subreddit: r/webdev
+Title: "How do I fix this CSS bug in my new portfolio?"
+Category: Web Development
+
+1. Deduplication: The scraper checks if this post ID already exists in the 
+   database. (Result: New Post)
+2. Keyword Filter: The title contains "portfolio". This word is flagged as a 
+   disqualifier for Web Development, as it typically points to a developer, 
+   not a client.
+3. Local AI Check: The local model processes the title "How do I fix this CSS 
+   bug in my new portfolio?"
+   - The model detects a high probability (90%+) of this being "Not a Lead".
+4. Final Result: The post is dropped. It will NOT appear on your frontend.
+
+
+POST EXAMPLE 2: [ACCEPTED - POSSIBLE LEAD]
+-----------------------------------------
+Subreddit: r/startups
+Title: "Looking for an expert to build a Shopify store for my new niche business"
+Category: Shopify
+
+1. Deduplication: Checks ID in database. (Result: New Post)
+2. Keyword Filter: No disqualifiers (like "course", "wholesale", or 
+   "developer") are found in the title.
+3. Local AI Check: The local model processes the title "Looking for an 
+   expert to build a Shopify store for my new niche business"
+   - The model finds keywords like "Looking for", "expert", and "build 
+     a store".
+   - The model predicts "Lead" with a high probability (85%+), matching 
+     similar "hiring" signals from the training dataset.
+4. Final Result: The post is SAVED to the `SmartRedditLead` table and will 
+   now appear on your dashboard.
+
+================================================================================
+            APPENDIX: KEYWORDS & DISQUALIFIERS (FULL LIST)
+================================================================================
+
+The following phrases are used to automatically reject posts BEFORE they 
+reach the AI model. This keeps the processing extremely fast.
+
+GLOBAL DISQUALIFIERS (Rejects post for ALL categories):
+-------------------------------------------------------
+- "i am a developer"
+- "i'm a developer"
+- "i offer"
+- "i provide"
+- "my service"
+- "dm me for freelance"
+- "portfolio showcase"
+- "hiring for my team"
+- "job posting"
+- "we are hiring"
+
+CATEGORY-SPECIFIC DISQUALIFIERS:
+--------------------------------
+- Web Development: "wholesale", "supplier", "interview", "teacher", 
+  "teaching", "course", "tutorial"
+- SEO: "wholesale", "supplier", "job posting", "i offer seo", "my seo 
+  service", "dm me", "teach seo", "interview", "course", "tutorial"
+- Shopify: "wholesale", "supplier", "interview", "tutorial", "course", 
+  "i offer", "my shopify service", "portfolio", "teacher"
+- Digital Marketing: "wholesale", "supplier", "interview", "teacher", 
+  "tutorial", "course", "i offer", "i provide marketing", "portfolio"
+- Design: "wholesale", "supplier", "interview", "teacher", "tutorial", 
+  "course", "i offer design", "my design service", "portfolio showcase"
+- App Development: "wholesale", "supplier", "interview", "teacher", 
+  "tutorial", "course", "hiring for my team", "portfolio showcase"
+- Automation / AI: "wholesale", "supplier", "interview", "teacher", 
+  "tutorial", "course", "i offer automation", "my automation service"
+
+================================================================================

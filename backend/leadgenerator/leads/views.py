@@ -1,5 +1,5 @@
 import csv
-import googlemaps # type: ignore
+import googlemaps  # type: ignore
 from io import StringIO
 from django.http import HttpResponse
 from django.conf import settings
@@ -7,7 +7,9 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from datetime import datetime
 import time
-from .services.reddit_service import fetch_reddit_leads
+
+# ─── Google Maps leads ────────────────────────────────────────────────────────
+
 @api_view(['POST'])
 def generate_leads(request):
     business_type = request.data.get('business_type')
@@ -20,11 +22,9 @@ def generate_leads(request):
         gmaps = googlemaps.Client(key=settings.GOOGLE_API_KEY)
         query = f"{business_type} in {city_area}"
 
-        # Initial search
         response = gmaps.places(query=query)
         leads = []
 
-        # Function to extract lead data
         def extract_leads(places):
             data = []
             for place in places.get('results', []):
@@ -39,18 +39,14 @@ def generate_leads(request):
                 })
             return data
 
-        # Add first page of results
         leads.extend(extract_leads(response))
 
-        # Follow pagination tokens (max 2 more pages)
         while 'next_page_token' in response and len(leads) < 60:
-            time.sleep(2)  # Required delay before using next_page_token
+            time.sleep(2)
             response = gmaps.places(query=query, page_token=response['next_page_token'])
             leads.extend(extract_leads(response))
 
-        # Optional limit safeguard (max 60)
         leads = leads[:60]
-
         return Response({'leads': leads})
 
     except Exception as e:
@@ -82,31 +78,253 @@ def export_leads_csv(request):
     except Exception as e:
         return HttpResponse(f"Error generating CSV: {str(e)}", status=500)
 
-@api_view(['POST'])
-def generate_reddit_leads(request):
-    """
-    Endpoint to fetch Reddit leads based on service category, subreddits, and keywords.
-    """
-    service_category = request.data.get('role') # Matching the 'role' field from frontend
-    subreddits = request.data.get('subreddits', [])
-    keyword = request.data.get('keyword')
-    limit = int(request.data.get('limit', 50))
 
-    if not service_category or not subreddits:
-        return Response({'error': 'Please provide Service Category and at least one Subreddit.'}, status=400)
+# ─── Reddit Leads (new architecture) ─────────────────────────────────────────
 
+from leads.models import RedditLead, MonitoredSubreddit
+
+SERVICE_CATEGORIES = [
+    {"id": "web_development",    "label": "Web Development"},
+    {"id": "seo",                "label": "SEO"},
+    {"id": "shopify",            "label": "Shopify"},
+    {"id": "digital_marketing",  "label": "Digital Marketing"},
+    {"id": "design",             "label": "Design"},
+    {"id": "app_development",    "label": "App Development"},
+    {"id": "automation_ai",      "label": "Automation / AI"},
+]
+
+
+@api_view(["GET"])
+def reddit_services(request):
+    """Return the list of service categories."""
+    return Response({"services": SERVICE_CATEGORIES})
+
+
+@api_view(["GET"])
+def reddit_leads(request):
+    """
+    Return stored leads for a service category.
+    Query params:
+        service_category  (required)
+        sort              'newest' | 'top'  (default: newest)
+        limit             int               (default: 50)
+    """
+    category = request.query_params.get("service_category")
+    if not category:
+        return Response({"error": "service_category query parameter is required."}, status=400)
+
+    sort = request.query_params.get("sort", "newest")
+    limit = int(request.query_params.get("limit", 50))
+
+    qs = RedditLead.objects.filter(service_category=category)
+
+    if sort == "top":
+        qs = qs.order_by("-ups")
+    else:
+        qs = qs.order_by("-created_at")
+
+    qs = qs[:limit]
+
+    data = [
+        {
+            "id": lead.id,
+            "reddit_post_id": lead.reddit_post_id,
+            "title": lead.title,
+            "subreddit": lead.subreddit,
+            "author": lead.author,
+            "url": lead.url,
+            "ups": lead.ups,
+            "created_at": lead.created_at.isoformat() if lead.created_at else None,
+            "service_category": lead.service_category,
+            "ai_confidence": lead.ai_confidence,
+            "scraped_at": lead.scraped_at.isoformat() if lead.scraped_at else None,
+        }
+        for lead in qs
+    ]
+
+    return Response({"leads": data, "total": len(data), "service_category": category})
+
+
+@api_view(["GET", "POST"])
+def managed_subreddits(request):
+    """
+    GET  /api/reddit/subreddits?service_category=...  → list monitored subreddits
+    POST /api/reddit/subreddits  {service_category, subreddit}  → add custom subreddit
+    """
+    if request.method == "GET":
+        category = request.query_params.get("service_category")
+        qs = MonitoredSubreddit.objects.all()
+        if category:
+            qs = qs.filter(service_category=category)
+        data = [
+            {"id": s.id, "service_category": s.service_category, "subreddit": s.subreddit, "is_custom": s.is_custom}
+            for s in qs
+        ]
+        return Response({"subreddits": data})
+
+    # POST — add a custom subreddit
+    category = request.data.get("service_category")
+    subreddit = request.data.get("subreddit", "").strip().lower()
+
+    if not category or not subreddit:
+        return Response({"error": "service_category and subreddit are required."}, status=400)
+
+    obj, created = MonitoredSubreddit.objects.get_or_create(
+        service_category=category,
+        subreddit=subreddit,
+        defaults={"is_custom": True},
+    )
+
+    return Response(
+        {"message": "Added" if created else "Already exists", "subreddit": subreddit},
+        status=201 if created else 200,
+    )
+
+
+# ─── Smart Reddit Leads (Gemini LLM-verified) ─────────────────────────────────
+
+from leads.models import SmartRedditLead, RedditLeadTrainingData  # noqa: E402
+from leads.services.smart_pipeline import run_smart_pipeline, expire_old_smart_leads  # noqa: E402
+
+
+@api_view(["GET"])
+def smart_reddit_services(request):
+    """Return the list of service categories (same set as regular Reddit)."""
+    return Response({"services": SERVICE_CATEGORIES})
+
+
+@api_view(["GET"])
+def smart_reddit_leads(request):
+    """
+    Return Gemini-verified leads for a service category.
+    Query params:
+        service_category  (required)
+        sort              'newest' | 'top'  (default: newest)
+        limit             int               (default: 50)
+    """
+    category = request.query_params.get("service_category")
+    if not category:
+        return Response({"error": "service_category query parameter is required."}, status=400)
+
+    sort = request.query_params.get("sort", "newest")
+    limit = int(request.query_params.get("limit", 50))
+
+    qs = SmartRedditLead.objects.filter(service_category=category)
+    qs = qs.order_by("-ups") if sort == "top" else qs.order_by("-created_at")
+    qs = qs[:limit]
+
+    data = [
+        {
+            "id": lead.id,
+            "reddit_post_id": lead.reddit_post_id,
+            "title": lead.title,
+            "subreddit": lead.subreddit,
+            "author": lead.author,
+            "url": lead.url,
+            "ups": lead.ups,
+            "created_at": lead.created_at.isoformat() if lead.created_at else None,
+            "service_category": lead.service_category,
+            "scraped_at": lead.scraped_at.isoformat() if lead.scraped_at else None,
+            # New smart fields
+            "classification": lead.classification,
+            "confidence_score": lead.confidence_score,
+            "reason_tags": lead.reason_tags,
+            "explanation": lead.explanation,
+        }
+        for lead in qs
+    ]
+
+    return Response({"leads": data, "total": len(data), "service_category": category})
+
+
+@api_view(["POST"])
+def smart_reddit_run_pipeline(request):
+    """
+    Trigger the smart pipeline manually via API.
+    POST /api/smart-reddit/run/
+    """
     try:
-        results = fetch_reddit_leads(
-            service_category=service_category,
-            subreddits=subreddits,
-            keyword=keyword,
-            limit=limit
+        expire_days = int(request.data.get("expire_days", 45))
+        expired = expire_old_smart_leads(days=expire_days)
+        stats = run_smart_pipeline()
+        return Response({"expired": expired, "stats": stats})
+    except Exception as exc:
+        return Response({"error": str(exc)}, status=500)
+
+
+# ─── Lead Review & Labeling (Additive) ──────────────────────────────────────────
+
+@api_view(["GET"])
+def review_leads_list(request):
+    """
+    Fetch leads from SmartRedditLead for manual review.
+    Exclude those already in RedditLeadTrainingData.
+    """
+    labeled_ids = RedditLeadTrainingData.objects.values_list("post_id", flat=True)
+    qs = SmartRedditLead.objects.exclude(reddit_post_id__in=labeled_ids)
+    
+    classification = request.query_params.get("classification")
+    if classification:
+        qs = qs.filter(classification=classification)
+        
+    sort = request.query_params.get("sort", "newest")
+    if sort == "top":
+        qs = qs.order_by("-ups")
+    elif sort == "intent":
+        qs = qs.order_by("-confidence_score")
+    elif sort == "confidence_low":
+        qs = qs.order_by("confidence_score")
+    else:
+        qs = qs.order_by("-created_at")
+        
+    data = [
+        {
+            "id": lead.id,
+            "reddit_post_id": lead.reddit_post_id,
+            "title": lead.title,
+            "subreddit": lead.subreddit,
+            "author": lead.author,
+            "url": lead.url,
+            "ups": lead.ups,
+            "created_at": lead.created_at.isoformat() if lead.created_at else None,
+            "service_category": lead.service_category,
+            "classification": lead.classification,
+            "confidence_score": lead.confidence_score,
+            "reason_tags": lead.reason_tags,
+            "explanation": lead.explanation,
+        }
+        for lead in qs[:100] # Limit to 100 for review productivity
+    ]
+    return Response({"leads": data})
+
+
+@api_view(["POST"])
+def label_lead(request):
+    """
+    Save a user label for a lead.
+    Expected data: {post_id, user_label}
+    """
+    post_id = request.data.get("post_id")
+    user_label = request.data.get("user_label") # Boolean
+    
+    if post_id is None or user_label is None:
+        return Response({"error": "post_id and user_label are required."}, status=400)
+    
+    try:
+        original = SmartRedditLead.objects.get(reddit_post_id=post_id)
+        
+        training_obj, created = RedditLeadTrainingData.objects.update_or_create(
+            post_id=post_id,
+            defaults={
+                "title": original.title,
+                "subreddit": original.subreddit,
+                "category": original.service_category,
+                "final_score": original.confidence_score,
+                "matched_signals": original.reason_tags,
+                "user_label": user_label,
+            }
         )
         
-        if isinstance(results, dict) and "error" in results:
-            return Response(results, status=400)
-            
-        return Response({'leads': results})
-
-    except Exception as e:
-        return Response({'error': str(e)}, status=500)
+        return Response({"message": "Labeled successfully", "id": training_obj.id})
+    except SmartRedditLead.DoesNotExist:
+        return Response({"error": "Original lead not found"}, status=404)

@@ -1,0 +1,31 @@
+text,label
+"I need a website for my business",lead
+"Looking for a SaaS developer to build a project",lead
+"Can someone help me with SEO for my shop?",lead
+"Looking to hire a freelancer for lead generation",lead
+"Hiring a web designer for a long term project",lead
+"We need an app developer for an ecommerce store",lead
+"Looking for digital marketing experts",lead
+"Looking for someone to help with Google Ads",lead
+"I need help setting up my Shopify store",lead
+"Looking for a professional logo designer",lead
+"Can anyone recommend a good developer for hire?",lead
+"Need a copywriter for my new blog",lead
+"Looking for a consultant to help with business strategy",lead
+"Found this cool website today",not_lead
+"How do I fix this bug in Python?",not_lead
+"Just sharing a meme about coding",not_lead
+"Looking for advice on video games",not_lead
+"I am a developer looking for work",not_lead
+"I offer web development services at cheap prices",not_lead
+"Check out my new portfolio",not_lead
+"I'm a designer available for freelance",not_lead
+"My agency provides marketing services",not_lead
+"Is anyone else having trouble with Reddit today?",not_lead
+"Tutorial on how to build a React app",not_lead
+"Course on Shopify development",not_lead
+"Interview with a successful entrepreneur",not_lead
+"Teaching my kids how to code",not_lead
+"Job posting: We are looking for a marketing manager",not_lead
+"Hiring for my team (no freelancers)",not_lead
+"DM me for custom art commissions",not_lead
