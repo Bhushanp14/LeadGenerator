@@ -47,37 +47,37 @@ HIGH_CONFIDENCE_BOOSTS = [
 # Logic Functions
 # ──────────────────────────────────────────────────────────────────────────────
 
-def calculate_lead_score_details(title: str):
+def calculate_lead_score_details(text: str):
     """
     Computes a raw intent score and returns matched tags.
     Returns: (score, reason_tags)
     """
-    title_lower = title.lower()
+    text_lower = text.lower()
     score = 0
     reason_tags = []
 
     # 1. Positive Signals
     for phrase, points in POSITIVE_SIGNALS.items():
-        if phrase in title_lower:
+        if phrase in text_lower:
             score += points
             reason_tags.append(phrase.replace(" ", "_"))
 
     # 2. Business Context
     for phrase, points in BUSINESS_CONTEXT.items():
-        if phrase in title_lower:
+        if phrase in text_lower:
             score += points
             reason_tags.append(phrase.replace(" ", "_"))
 
     # 3. Negative Signals (Reduces score, doesn't reject)
     for phrase, points in NEGATIVE_SIGNALS.items():
-        if phrase in title_lower:
+        if phrase in text_lower:
             score += points
             reason_tags.append(f"minus_{phrase.replace(' ', '_')}")
 
     # 4. High Confidence Boost
     has_boost = False
     for phrase in HIGH_CONFIDENCE_BOOSTS:
-        if phrase in title_lower:
+        if phrase in text_lower:
             score += 5
             reason_tags.append("high_intent_boost")
             has_boost = True
@@ -107,7 +107,10 @@ def classify_posts(posts: list[dict], service_category: str = "") -> list[dict]:
 
     for post in posts:
         title = post.get("title", "")
-        raw_intent_score, reason_tags = calculate_lead_score_details(title)
+        body = post.get("body", "")
+        combined_text = f"{title}\n{body}".strip()
+
+        raw_intent_score, reason_tags = calculate_lead_score_details(combined_text)
         
         # Normalize intent score to 0-1 range (clamped)
         # We consider a score of 12-15 to be 'perfect' intent
@@ -121,7 +124,7 @@ def classify_posts(posts: list[dict], service_category: str = "") -> list[dict]:
                 # We assume column 0 is 'lead' if that's how it was trained, 
                 # but better to check labels.
                 labels = ml_model.classes_
-                probs = ml_model.predict_proba([title])[0]
+                probs = ml_model.predict_proba([combined_text])[0]
                 
                 # Find index of 'lead' label
                 lead_idx = -1

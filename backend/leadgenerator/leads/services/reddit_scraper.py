@@ -42,6 +42,7 @@ def fetch_new_posts(subreddit: str) -> list[dict]:
         posts.append({
             "post_id": post.get("id", ""),
             "title": post.get("title", ""),
+            "body": post.get("selftext", ""),
             "subreddit": post.get("subreddit", subreddit),
             "author": post.get("author", "[deleted]"),
             "created_utc": datetime.fromtimestamp(created_utc, tz=timezone.utc) if created_utc else None,
