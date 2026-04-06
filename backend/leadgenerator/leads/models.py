@@ -2,8 +2,11 @@ from django.db import models
 from django.utils import timezone
 
 
-class RedditLead(models.Model):
-    """A Reddit post classified as a professional service request."""
+class SmartRedditLead(models.Model):
+    """
+    A Reddit post verified by a multi-stage scoring & AI classification pipeline.
+    Categorizes posts into 'lead', 'maybe_lead', or 'noise'.
+    """
 
     SERVICE_CATEGORY_CHOICES = [
         ("web_development", "Web Development"),
@@ -14,54 +17,6 @@ class RedditLead(models.Model):
         ("app_development", "App Development"),
         ("automation_ai", "Automation / AI"),
     ]
-
-    reddit_post_id = models.CharField(max_length=20, unique=True)
-    title = models.TextField()
-    subreddit = models.CharField(max_length=100)
-    author = models.CharField(max_length=100, blank=True)
-    url = models.URLField(max_length=500)
-    ups = models.IntegerField(default=0)
-    created_at = models.DateTimeField()  # original Reddit post creation time
-    service_category = models.CharField(max_length=50, choices=SERVICE_CATEGORY_CHOICES)
-    ai_confidence = models.FloatField(default=0.0)
-    scraped_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        ordering = ["-created_at"]
-        indexes = [
-            models.Index(fields=["service_category"]),
-            models.Index(fields=["scraped_at"]),
-        ]
-
-    def __str__(self):
-        return f"[{self.service_category}] {self.title[:80]}"
-
-
-class MonitoredSubreddit(models.Model):
-    """Subreddits monitored for a service category, including user-added ones."""
-
-    SERVICE_CATEGORY_CHOICES = RedditLead.SERVICE_CATEGORY_CHOICES
-
-    service_category = models.CharField(max_length=50, choices=SERVICE_CATEGORY_CHOICES)
-    subreddit = models.CharField(max_length=100)
-    is_custom = models.BooleanField(default=False)  # True = added by user
-    added_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        unique_together = ("service_category", "subreddit")
-        ordering = ["service_category", "subreddit"]
-
-    def __str__(self):
-        return f"r/{self.subreddit} → {self.service_category}"
-
-
-class SmartRedditLead(models.Model):
-    """
-    A Reddit post verified by a multi-stage scoring & AI classification pipeline.
-    Categorizes posts into 'lead', 'maybe_lead', or 'noise'.
-    """
-
-    SERVICE_CATEGORY_CHOICES = RedditLead.SERVICE_CATEGORY_CHOICES
     CLASSIFICATION_CHOICES = [
         ("lead", "Lead"),
         ("maybe_lead", "Maybe Lead"),
@@ -97,6 +52,24 @@ class SmartRedditLead(models.Model):
 
     def __str__(self):
         return f"[Smart][{self.classification}][{self.service_category}] {self.title[:80]}"
+
+
+class MonitoredSubreddit(models.Model):
+    """Subreddits monitored for a service category, including user-added ones."""
+
+    SERVICE_CATEGORY_CHOICES = SmartRedditLead.SERVICE_CATEGORY_CHOICES
+
+    service_category = models.CharField(max_length=50, choices=SERVICE_CATEGORY_CHOICES)
+    subreddit = models.CharField(max_length=100)
+    is_custom = models.BooleanField(default=False)  # True = added by user
+    added_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("service_category", "subreddit")
+        ordering = ["service_category", "subreddit"]
+
+    def __str__(self):
+        return f"r/{self.subreddit} → {self.service_category}"
 
 
 class RedditLeadTrainingData(models.Model):

@@ -2,8 +2,8 @@ import React from "react";
 import { Brain, Building2, ShieldCheck } from "lucide-react";
 
 interface HeaderProps {
-  source: "google" | "reddit" | "smart_reddit" | "review";
-  setSource: (source: "google" | "reddit" | "smart_reddit" | "review") => void;
+  source: "google" | "smart_reddit" | "review";
+  setSource: (source: "google" | "smart_reddit" | "review") => void;
 }
 
 const Header: React.FC<HeaderProps> = ({ source, setSource }) => {
@@ -34,19 +34,6 @@ const Header: React.FC<HeaderProps> = ({ source, setSource }) => {
           `}
         >
           Google Maps
-        </button>
-        <button
-          id="tab-reddit-leads"
-          onClick={() => setSource("reddit")}
-          className={`
-            px-5 py-2 rounded-lg text-sm font-semibold transition-all duration-200
-            ${source === "reddit"
-              ? "bg-white text-orange-600 shadow-sm"
-              : "text-gray-500 hover:text-gray-700"
-            }
-          `}
-        >
-          Reddit Leads
         </button>
         <button
           id="tab-smart-reddit"

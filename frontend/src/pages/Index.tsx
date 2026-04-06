@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import Header from '@/components/Header';
 import SearchForm from '@/components/SearchForm';
 import LeadTable from '@/components/LeadTable';
-import RedditLeadsPage from '@/components/RedditLeadsPage';
 import SmartRedditPage from '@/components/SmartRedditPage';
 import LeadReviewPage from '@/components/LeadReviewPage';
 import { Lead } from '@/types/lead';
@@ -12,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Download } from "lucide-react";
 
 const Index: React.FC = () => {
-  const [source, setSource] = useState<"google" | "reddit" | "smart_reddit" | "review">("google");
+  const [source, setSource] = useState<"google" | "smart_reddit" | "review">("google");
   const [leads, setLeads] = useState<Lead[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
 
@@ -83,7 +82,6 @@ const Index: React.FC = () => {
           </div>
         )}
 
-        {source === "reddit" && <RedditLeadsPage />}
         {source === "smart_reddit" && <SmartRedditPage />}
         {source === "review" && <LeadReviewPage />}
       </main>

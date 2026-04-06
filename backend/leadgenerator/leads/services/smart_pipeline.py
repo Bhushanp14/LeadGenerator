@@ -18,7 +18,67 @@ from leads.services.smart_classifier import classify_posts
 
 logger = logging.getLogger(__name__)
 
-BATCH_SIZE = 50
+# Default subreddit mapping — seeded on first run
+DEFAULT_SUBREDDIT_MAP: dict[str, list[str]] = {
+    "web_development": [
+        "startups", "webdev", "Entrepreneur", "smallbusiness", "learnprogramming",
+        "javascript", "reactjs", "node", "wordpress", "learnwebdev",
+        "Frontend", "forhire", "webmasters"
+    ],
+    "seo": [
+        "SEO", "marketing", "Entrepreneur", "BigSEO", "localseo",
+        "AskMarketing", "webmasters", "smallbusiness", "growthhacking",
+        "content_marketing", "forhire"
+    ],
+    "shopify": [
+        "shopify", "ecommerce", "Entrepreneur", "ShopifyPlus", "ShopifyWebsites",
+        "shopify_hustlers", "shopifyDev", "ShopifyThemes", "websiteservices",
+        "forhire", "webdev"
+    ],
+    "digital_marketing": [
+        "marketing", "Entrepreneur", "AskMarketing", "advertising",
+        "SocialMediaMarketing", "growthhacking", "smallbusiness", "startups",
+        "forhire", "content_marketing"
+    ],
+    "design": [
+        "design", "graphic_design", "UXDesign", "DesignJobs", "web_design",
+        "UI_Design", "logodesign", "Branding", "forhire", "freelancedesign",
+        "GraphicDesignRequests"
+    ],
+    "app_development": [
+        "startups", "androiddev", "iOSProgramming", "Entrepreneur", "AppDevelopers",
+        "flutterdev", "reactnative", "appdev", "gamedev", "unity3d", "forhire",
+        "learnprogramming"
+    ],
+    "automation_ai": [
+        "automation", "Python", "artificial", "MachineLearning", "ChatGPT",
+        "OpenAI", "n8n", "Make", "rpa", "nocode", "PowerAutomate", "forhire"
+    ],
+}
+
+
+def seed_default_subreddits():
+    """
+    Upsert default subreddits from DEFAULT_SUBREDDIT_MAP into MonitoredSubreddit.
+    Safe to call on every run — adds any missing defaults without removing
+    existing rows (including user-added custom subreddits).
+    """
+    to_create = []
+    for category, subreddits in DEFAULT_SUBREDDIT_MAP.items():
+        for sub in subreddits:
+            to_create.append(
+                MonitoredSubreddit(
+                    service_category=category,
+                    subreddit=sub,
+                    is_custom=False,
+                )
+            )
+    inserted = MonitoredSubreddit.objects.bulk_create(to_create, ignore_conflicts=True)
+    new_count = len([x for x in inserted if x.pk])
+    if new_count:
+        print(f"[SmartPipeline] Added {new_count} new default subreddits.")
+    else:
+        print(f"[SmartPipeline] All default subreddits already present — nothing to seed.")
 
 
 def get_monitored_subreddits() -> dict[str, list[str]]:
@@ -34,6 +94,7 @@ def run_smart_pipeline() -> dict:
     Main smart pipeline entry point.
     Returns stats dict: {scraped, analyzed, classified_lead, classified_maybe, stored, skipped}
     """
+    seed_default_subreddits()
     category_map = get_monitored_subreddits()
     existing_ids = set(SmartRedditLead.objects.values_list("reddit_post_id", flat=True))
 

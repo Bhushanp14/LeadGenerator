@@ -6,10 +6,6 @@ urlpatterns = [
     path('generate-leads/', views.generate_leads, name='generate_leads'),
     path('export-leads-csv/', views.export_leads_csv, name='export_leads_csv'),
 
-    # ── Reddit (legacy keyword classifier) ───────────────────────────────────
-    path('reddit/services/', views.reddit_services, name='reddit_services'),
-    path('reddit/leads/', views.reddit_leads, name='reddit_leads'),
-    path('reddit/subreddits/', views.managed_subreddits, name='managed_subreddits'),
 
     # ── Smart Reddit (Scoring & ML Pipeline) ───────────────────────────────────
     path('smart-reddit/services/', views.smart_reddit_services, name='smart_reddit_services'),

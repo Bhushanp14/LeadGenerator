@@ -19,46 +19,6 @@ export async function generateLeads(businessType, cityArea) {
   }
 }
 
-// ── Reddit (legacy keyword classifier) ─────────────────────────────────
-
-/**
- * Fetch the list of service categories from the backend.
- */
-export async function fetchRedditServices() {
-  const response = await fetch(`${API_BASE_URL}reddit/services/`);
-  if (!response.ok) throw new Error("Failed to fetch service categories");
-  const data = await response.json();
-  return data.services || [];
-}
-
-/**
- * Fetch stored leads for a service category.
- */
-export async function fetchRedditLeads({ serviceCategory, sort = "newest", limit = 50 }) {
-  const params = new URLSearchParams({
-    service_category: serviceCategory,
-    sort,
-    limit: String(limit),
-  });
-
-  const response = await fetch(`${API_BASE_URL}reddit/leads/?${params}`);
-  if (!response.ok) throw new Error("Failed to fetch Reddit leads");
-  const data = await response.json();
-  return data.leads || [];
-}
-
-/**
- * Add a custom subreddit to monitor.
- */
-export async function addCustomSubreddit(serviceCategory, subreddit) {
-  const response = await fetch(`${API_BASE_URL}reddit/subreddits/`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ service_category: serviceCategory, subreddit }),
-  });
-  if (!response.ok) throw new Error("Failed to add subreddit");
-  return response.json();
-}
 
 // ── Smart Reddit (Scoring & ML Pipeline) ──────────────────────────────────
 

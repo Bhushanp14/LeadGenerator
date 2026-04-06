@@ -79,9 +79,10 @@ def export_leads_csv(request):
         return HttpResponse(f"Error generating CSV: {str(e)}", status=500)
 
 
-# ─── Reddit Leads (new architecture) ─────────────────────────────────────────
+# ─── Smart Reddit Leads (Gemini LLM-verified) ─────────────────────────────────
 
-from leads.models import RedditLead, MonitoredSubreddit
+from leads.models import SmartRedditLead, RedditLeadTrainingData  # noqa: E402
+from leads.services.smart_pipeline import run_smart_pipeline, expire_old_smart_leads  # noqa: E402
 
 SERVICE_CATEGORIES = [
     {"id": "web_development",    "label": "Web Development"},
@@ -95,101 +96,8 @@ SERVICE_CATEGORIES = [
 
 
 @api_view(["GET"])
-def reddit_services(request):
-    """Return the list of service categories."""
-    return Response({"services": SERVICE_CATEGORIES})
-
-
-@api_view(["GET"])
-def reddit_leads(request):
-    """
-    Return stored leads for a service category.
-    Query params:
-        service_category  (required)
-        sort              'newest' | 'top'  (default: newest)
-        limit             int               (default: 50)
-    """
-    category = request.query_params.get("service_category")
-    if not category:
-        return Response({"error": "service_category query parameter is required."}, status=400)
-
-    sort = request.query_params.get("sort", "newest")
-    limit = int(request.query_params.get("limit", 50))
-
-    qs = RedditLead.objects.filter(service_category=category)
-
-    if sort == "top":
-        qs = qs.order_by("-ups")
-    else:
-        qs = qs.order_by("-created_at")
-
-    qs = qs[:limit]
-
-    data = [
-        {
-            "id": lead.id,
-            "reddit_post_id": lead.reddit_post_id,
-            "title": lead.title,
-            "subreddit": lead.subreddit,
-            "author": lead.author,
-            "url": lead.url,
-            "ups": lead.ups,
-            "created_at": lead.created_at.isoformat() if lead.created_at else None,
-            "service_category": lead.service_category,
-            "ai_confidence": lead.ai_confidence,
-            "scraped_at": lead.scraped_at.isoformat() if lead.scraped_at else None,
-        }
-        for lead in qs
-    ]
-
-    return Response({"leads": data, "total": len(data), "service_category": category})
-
-
-@api_view(["GET", "POST"])
-def managed_subreddits(request):
-    """
-    GET  /api/reddit/subreddits?service_category=...  → list monitored subreddits
-    POST /api/reddit/subreddits  {service_category, subreddit}  → add custom subreddit
-    """
-    if request.method == "GET":
-        category = request.query_params.get("service_category")
-        qs = MonitoredSubreddit.objects.all()
-        if category:
-            qs = qs.filter(service_category=category)
-        data = [
-            {"id": s.id, "service_category": s.service_category, "subreddit": s.subreddit, "is_custom": s.is_custom}
-            for s in qs
-        ]
-        return Response({"subreddits": data})
-
-    # POST — add a custom subreddit
-    category = request.data.get("service_category")
-    subreddit = request.data.get("subreddit", "").strip().lower()
-
-    if not category or not subreddit:
-        return Response({"error": "service_category and subreddit are required."}, status=400)
-
-    obj, created = MonitoredSubreddit.objects.get_or_create(
-        service_category=category,
-        subreddit=subreddit,
-        defaults={"is_custom": True},
-    )
-
-    return Response(
-        {"message": "Added" if created else "Already exists", "subreddit": subreddit},
-        status=201 if created else 200,
-    )
-
-
-# ─── Smart Reddit Leads (Gemini LLM-verified) ─────────────────────────────────
-
-from leads.models import SmartRedditLead, RedditLeadTrainingData  # noqa: E402
-from leads.services.smart_pipeline import run_smart_pipeline, expire_old_smart_leads  # noqa: E402
-
-
-@api_view(["GET"])
 def smart_reddit_services(request):
-    """Return the list of service categories (same set as regular Reddit)."""
+    """Return the list of service categories."""
     return Response({"services": SERVICE_CATEGORIES})
 
 
